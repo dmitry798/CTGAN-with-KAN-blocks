@@ -1,6 +1,6 @@
 import pickle
 import pandas as pd
-from ctgan import CTGAN
+from models.ctgan_dp import CTGAN
 
 url = "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
 df = pd.read_csv(url, header=None, na_values='?')
