@@ -18,7 +18,7 @@ discrete_columns = ['workclass','education','marital-status','occupation',
                     'relationship','race','sex','native-country','income']
 
 synthesizer = KAN_CTGAN(
-    epochs=500,
+    epochs=200,
     verbose=True,
     grid_size_gen=5,
     spline_order_gen=3

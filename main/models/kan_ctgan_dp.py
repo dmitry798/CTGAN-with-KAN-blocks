@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch import optim
-from torch.nn import BatchNorm1d, Dropout, Linear, Module, SiLU, LeakyReLU, Sequential, functional
+from torch.nn import LayerNorm, Dropout, Linear, Module, SiLU, LeakyReLU, Sequential, functional
 from tqdm import tqdm
 
 from ctgan.data_sampler import DataSampler
@@ -65,7 +65,7 @@ class KAN_Residual(Module):
                             base_activation=base_activation,
                             grid_eps=grid_eps, 
                             grid_range=grid_range)
-        self.bn = BatchNorm1d(o)
+        self.bn = LayerNorm(o)
         self.silu = SiLU()
 
     def forward(self, input_):
@@ -173,12 +173,12 @@ class KAN_CTGAN(BaseSynthesizer):
         embedding_dim=128,
         generator_dim=(256, 256),
         discriminator_dim=(256, 256),
-        generator_lr=1e-4,
+        generator_lr=2e-4,
         generator_decay=1e-5,
-        discriminator_lr=2e-4,
+        discriminator_lr=6e-4,
         discriminator_decay=1e-5,
-        batch_size=512,
-        discriminator_steps=1,
+        batch_size=500,
+        discriminator_steps=2,
         log_frequency=True,
         verbose=False,
         epochs=500,
@@ -478,7 +478,7 @@ class KAN_CTGAN(BaseSynthesizer):
                     loss_fake = functional.binary_cross_entropy_with_logits(y_fake, torch.zeros_like(y_fake))
                     loss_d = (loss_real + loss_fake) / 2
 
-                    optimizerD.zero_grad(set_to_none=False)
+                    optimizerD.zero_grad()
                     loss_d.backward()
                     optimizerD.step()
 
@@ -495,6 +495,8 @@ class KAN_CTGAN(BaseSynthesizer):
 
                 fake = self._generator(fakez)
                 fakeact = self._apply_activate(fake)
+                
+                discriminator.disable_hooks() 
 
                 if c1 is not None:
                     y_fake = discriminator(torch.cat([fakeact, c1], dim=1))
@@ -508,9 +510,11 @@ class KAN_CTGAN(BaseSynthesizer):
 
                 loss_g = functional.binary_cross_entropy_with_logits(y_fake, torch.ones_like(y_fake)) + cross_entropy
 
-                optimizerG.zero_grad(set_to_none=False)
+                optimizerG.zero_grad()
                 loss_g.backward()
                 optimizerG.step()
+                
+                discriminator.enable_hooks() 
 
             generator_loss = loss_g.detach().cpu().item()
             discriminator_loss = loss_d.detach().cpu().item()

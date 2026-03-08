@@ -514,6 +514,9 @@ class CTGAN(BaseSynthesizer):
                         dis=_format_score(discriminator_loss),
                     )
                 )
+        if self._verbose:
+            print(f"\nРеальный epsilon: {self.actual_epsilon:.4f} (target: {self.target_epsilon})")
+            print(f"Delta: {self.target_delta:.6f}")
 
     @random_state
     def sample(self, n, condition_column=None, condition_value=None):
