@@ -20,8 +20,8 @@ discrete_columns = ['workclass','education','marital-status','occupation',
 synthesizer = KAN_CTGAN(
     epochs=200,
     verbose=True,
-    grid_size_gen=5,
-    spline_order_gen=3
+    grid_size_gen=3,
+    spline_order_gen=2
 )
 
 synthesizer.fit(df, discrete_columns)

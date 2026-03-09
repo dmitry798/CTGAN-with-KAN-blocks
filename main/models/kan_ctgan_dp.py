@@ -84,7 +84,7 @@ class KAN_Generator(Module):
                 spline_order=3, 
                 scale_noise=0.1, 
                 scale_base=1.0,
-                scale_spline=1.0, 
+                scale_spline=0.8, 
                 enable_standalone_scale_spline=True, 
                 base_activation=torch.nn.SiLU,
                 grid_eps=0.02, 
@@ -174,7 +174,7 @@ class KAN_CTGAN(BaseSynthesizer):
         generator_dim=(256, 256),
         discriminator_dim=(256, 256),
         generator_lr=2e-4,
-        generator_decay=1e-5,
+        generator_decay=1e-3,
         discriminator_lr=6e-4,
         discriminator_decay=1e-5,
         batch_size=500,
@@ -384,8 +384,11 @@ class KAN_CTGAN(BaseSynthesizer):
 
         # (!) Обновил на KAN_Generator и Discriminator
         self._generator = KAN_Generator(
-            self._embedding_dim + self._data_sampler.dim_cond_vec(), self._generator_dim, data_dim,
-            grid_size=self._grid_size_gen, spline_order=self._spline_order_gen
+            self._embedding_dim + self._data_sampler.dim_cond_vec(), 
+            self._generator_dim, 
+            data_dim,
+            grid_size=self._grid_size_gen, 
+            spline_order=self._spline_order_gen
         ).to(self._device)
 
         discriminator = Discriminator(
@@ -512,6 +515,7 @@ class KAN_CTGAN(BaseSynthesizer):
 
                 optimizerG.zero_grad()
                 loss_g.backward()
+                torch.nn.utils.clip_grad_norm_(self._generator.parameters(), max_norm=1.0)
                 optimizerG.step()
                 
                 discriminator.enable_hooks() 
