@@ -18,9 +18,27 @@ df = pd.read_csv(os.path.join(base_dir, 'credit_scoring_train.csv'))
 print(f"✓ Загружено данных: {df.shape[0]} строк × {df.shape[1]} столбцов")
 print(f"✓ Целевая переменная 'Delinquent90': {df['Delinquent90'].value_counts().to_dict()}")
 
+# =====================================================================
+# ПРЕДОБРАБОТКА ДАННЫХ (обработка NaN)
+# =====================================================================
+print(f"\n📊 Предобработка данных:")
+print(f"   NaN значений ДО: {df.isna().sum().sum()}")
+
 # Удалим client_id (как в анализе)
 if 'client_id' in df.columns:
     df = df.drop('client_id', axis=1)
+
+# Заполняем NaN медианой для каждого столбца
+# (CTGAN не поддерживает null values)
+numeric_cols = df.select_dtypes(include=[np.number]).columns
+for col in numeric_cols:
+    if df[col].isna().sum() > 0:
+        median_val = df[col].median()
+        df[col].fillna(median_val, inplace=True)
+        print(f"   ✓ Столбец '{col}': заполнены NaN медианой {median_val:.2f}")
+
+print(f"   NaN значений ПОСЛЕ: {df.isna().sum().sum()}")
+print(f"   Форма данных: {df.shape}")
 
 # Категориальные колонки (если есть)
 discrete_columns = []
@@ -32,7 +50,7 @@ print("\n🔧 Инициализация оптимизированного CTGA
 print("   • generator_dim=(512, 512) (мощнее генератор)")
 print("   • discriminator_dim=(256, 256)")
 print("   • batch_size=256 (лучше сходимость)")
-print("   • discriminator_steps=5 (крепче дискриминатор)")
+print("   • discriminator_steps=2 (крепче дискриминатор)")
 print("   • epochs=400 (больше обучения)")
 print("   • learning_rate=2e-4")
 
@@ -47,8 +65,8 @@ synthesizer = CTGAN(
     generator_decay=1e-3,
     discriminator_lr=6e-4,
     discriminator_decay=1e-5,
-    batch_size=256,            # Меньше для лучшей конвергенции
-    discriminator_steps=5,     # Сильнее дискриминатор
+    batch_size=250,            # Должен делиться на pac (250 % 10 == 0)
+    discriminator_steps=2,     # Сильнее дискриминатор
     
     # ===== Общие =====
     log_frequency=True,
