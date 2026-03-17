@@ -190,7 +190,8 @@ class CTGAN(BaseSynthesizer):
         self._verbose = verbose
         self._epochs = epochs
         self.pac = pac
-        self._device = validate_and_set_device(enable_gpu, cuda)
+        self._device = torch.device('cuda' if enable_gpu and cuda and torch.cuda.is_available() else 'cpu')
+        print(f"[CTGAN] Device: {self._device}")
         self._enable_gpu = cuda if cuda is not None else enable_gpu
         self._transformer = None
         self._data_sampler = None
@@ -514,6 +515,7 @@ class CTGAN(BaseSynthesizer):
                         dis=_format_score(discriminator_loss),
                     )
                 )
+        self.actual_epsilon = self.privacy_engine.get_epsilon(self.target_delta)
         if self._verbose:
             print(f"\nРеальный epsilon: {self.actual_epsilon:.4f} (target: {self.target_epsilon})")
             print(f"Delta: {self.target_delta:.6f}")

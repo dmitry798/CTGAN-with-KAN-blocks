@@ -209,6 +209,7 @@ class KAN_CTGAN(BaseSynthesizer):
         self._epochs = epochs
         self.pac = pac
         self._device = torch.device('cuda' if enable_gpu and cuda and torch.cuda.is_available() else 'cpu')
+        print(f"[CTGAN+KAN] Device: {self._device}")
         self._transformer = None
         self._data_sampler = None
         self._generator = None
