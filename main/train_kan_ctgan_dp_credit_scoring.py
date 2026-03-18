@@ -59,7 +59,7 @@ synthesizer = KAN_CTGAN(
     discriminator_steps=2,
     # KAN specific parameters
     grid_size_gen=3,
-    spline_order_gen=2,
+    spline_order_gen=3,
     # Privacy parameters
     target_epsilon=5,  # Желаемый уровень приватности
     verbose=True,

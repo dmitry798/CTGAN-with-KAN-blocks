@@ -51,7 +51,7 @@ print("CTGAN Training...")
 print("="*50)
 
 synthesizer = CTGAN(
-    epochs=400,
+    epochs=200,
     batch_size=512,
     generator_dim=(256, 256),
     discriminator_dim=(256, 256),
