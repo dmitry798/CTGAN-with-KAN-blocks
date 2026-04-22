@@ -1,7 +1,4 @@
-"""CTGAN module."""
-
 import warnings
-
 import numpy as np
 import pandas as pd
 import torch
@@ -12,16 +9,16 @@ from tqdm import tqdm
 from ctgan.data_sampler import DataSampler
 from ctgan.data_transformer import DataTransformer
 from ctgan.errors import InvalidDataError
-from ctgan.synthesizers._utils import _format_score, _set_device, validate_and_set_device
+from ctgan.synthesizers._utils import _format_score, _set_device
 from ctgan.synthesizers.base import BaseSynthesizer, random_state
 
 from models.kan import KANLinear
 from opacus import PrivacyEngine
 from torch.utils.data import DataLoader, TensorDataset
 
-# (!) Заменил линейные слои на KAN
+
 class Discriminator(Module):
-    """Discriminator for the CTGAN."""
+    """CTGAN Discriminator"""
 
     def __init__(self, input_dim, discriminator_dim, pac=10):
         super().__init__()
@@ -37,13 +34,12 @@ class Discriminator(Module):
         self.seq = Sequential(*seq)
 
     def forward(self, input_):
-        """Apply the Discriminator to the `input_`."""
         assert input_.size()[0] % self.pac == 0
         return self.seq(input_.view(-1, self.pacdim))
 
-# (!) Новый skip connection для KAN (заменил линейный слой и ФА)
+
 class KAN_Residual(Module):
-    """Residual layer for the CTGAN."""
+    """Residual layer for the CTGAN"""
 
     def __init__(self, i, o,
                 grid_size=5, 
@@ -69,15 +65,14 @@ class KAN_Residual(Module):
         self.silu = SiLU()
 
     def forward(self, input_):
-        """Apply the Residual layer to the `input_`."""
         out = self.fc(input_)
         out = self.bn(out)
         out = self.silu(out)
         return torch.cat([out, input_], dim=1)
 
-# (!) Заменил линейные слои на KAN
+
 class KAN_Generator(Module):
-    """Generator for the CTGAN."""
+    """CTGAN Generator"""
 
     def __init__(self, embedding_dim, generator_dim, data_dim,
                 grid_size=5, 
@@ -108,18 +103,12 @@ class KAN_Generator(Module):
         self.seq = Sequential(*seq)
 
     def forward(self, input_):
-        """Apply the Generator to the `input_`."""
         data = self.seq(input_)
         return data
 
 
 class KAN_CTGAN(BaseSynthesizer):
     """Conditional Table GAN Synthesizer.
-
-    This is the core class of the CTGAN project, where the different components
-    are orchestrated together.
-    For more details about the process, please check the [Modeling Tabular data using
-    Conditional GAN](https://arxiv.org/abs/1907.00503) paper.
 
     Args:
         embedding_dim (int):
@@ -142,33 +131,21 @@ class KAN_CTGAN(BaseSynthesizer):
             Number of data samples to process in each step.
         discriminator_steps (int):
             Number of discriminator updates to do for each generator update.
-            From the WGAN paper: https://arxiv.org/abs/1701.07875. WGAN paper
-            default is 5. Default used is 1 to match original CTGAN implementation.
+            Default used is 1 to match original CTGAN implementation.
         log_frequency (boolean):
             Whether to use log frequency of categorical levels in conditional
             sampling. Defaults to ``True``.
-        verbose (boolean):
-            Whether to have print statements for progress results. Defaults to ``False``.
-        epochs (int):
-            Number of training epochs. Defaults to 300.
         pac (int):
             Number of samples to group together when applying the discriminator.
             Defaults to 10.
-        enable_gpu (bool):
-            Whether to attempt to use GPU for computation.
-            Defaults to ``True``.
-        cuda (bool):
-            **Deprecated** Whether to attempt to use cuda for GPU computation.
-            If this is False or CUDA is not available, CPU will be used.
-            Defaults to ``True``.
     """
-    # (!) Добавил параметры для KAN, target_epsilon - желаемый уровень приватности, train_delta - вероятность утечки, pac (packing) обязательно должен равняться 1 для opacus
+    
     def __init__(
         self,
         
         grid_size_gen=5,
         spline_order_gen=3,
-        target_epsilon = 5,
+        target_epsilon = 5, # desired level of privacy
         
         embedding_dim=128,
         generator_dim=(256, 256),
@@ -182,7 +159,7 @@ class KAN_CTGAN(BaseSynthesizer):
         log_frequency=True,
         verbose=False,
         epochs=500,
-        pac=1,
+        pac=1, # packing should be 1 for Opacus
         enable_gpu=True,
         cuda=True
     ):
@@ -218,9 +195,6 @@ class KAN_CTGAN(BaseSynthesizer):
     def _gumbel_softmax(logits, tau=1, hard=False, eps=1e-10, dim=-1):
         """Deals with the instability of the gumbel_softmax for older versions of torch.
 
-        For more details about the issue:
-        https://drive.google.com/file/d/1AA5wPfZ1kquaRtVruCd6BiYZGcDeNxyP/view?usp=sharing
-
         Args:
             logits […, num_features]:
                 Unnormalized log probabilities
@@ -235,6 +209,7 @@ class KAN_CTGAN(BaseSynthesizer):
         Returns:
             Sampled tensor of same shape as logits from the Gumbel-Softmax distribution.
         """
+        
         for _ in range(10):
             transformed = functional.gumbel_softmax(logits, tau=tau, hard=hard, eps=eps, dim=dim)
             if not torch.isnan(transformed).any():
@@ -243,7 +218,7 @@ class KAN_CTGAN(BaseSynthesizer):
         raise ValueError('gumbel_softmax returning NaN.')
 
     def _apply_activate(self, data):
-        """Apply proper activation function to the output of the generator."""
+        """Apply proper activation function to the output of the generator"""
         data_t = []
         st = 0
         for column_info in self._transformer.output_info_list:
@@ -263,14 +238,13 @@ class KAN_CTGAN(BaseSynthesizer):
         return torch.cat(data_t, dim=1)
 
     def _cond_loss(self, data, c, m):
-        """Compute the cross entropy loss on the fixed discrete column."""
+        """Compute the cross entropy loss on the fixed discrete column"""
         loss = []
         st = 0
         st_c = 0
         for column_info in self._transformer.output_info_list:
             for span_info in column_info:
                 if len(column_info) != 1 or span_info.activation_fn != 'softmax':
-                    # not discrete column
                     st += span_info.dim
                 else:
                     ed = st + span_info.dim
@@ -282,22 +256,13 @@ class KAN_CTGAN(BaseSynthesizer):
                     st = ed
                     st_c = ed_c
 
-        loss = torch.stack(loss, dim=1)  # noqa: PD013
+        loss = torch.stack(loss, dim=1)
 
         return (loss * m).sum() / data.size()[0]
 
     def _validate_discrete_columns(self, train_data, discrete_columns):
-        """Check whether ``discrete_columns`` exists in ``train_data``.
-
-        Args:
-            train_data (numpy.ndarray or pandas.DataFrame):
-                Training Data. It must be a 2-dimensional numpy array or a pandas.DataFrame.
-            discrete_columns (list-like):
-                List of discrete columns to be used to generate the Conditional
-                Vector. If ``train_data`` is a Numpy array, this list should
-                contain the integer indices of the columns. Otherwise, if it is
-                a ``pandas.DataFrame``, this list should contain the column names.
-        """
+        """Check whether discrete_columns exists in train_data"""
+        
         if isinstance(train_data, pd.DataFrame):
             invalid_columns = set(discrete_columns) - set(train_data.columns)
         elif isinstance(train_data, np.ndarray):
@@ -306,23 +271,14 @@ class KAN_CTGAN(BaseSynthesizer):
                 if column < 0 or column >= train_data.shape[1]:
                     invalid_columns.append(column)
         else:
-            raise TypeError('``train_data`` should be either pd.DataFrame or np.array.')
+            raise TypeError('train_data should be either pd.DataFrame or np.array.')
 
         if invalid_columns:
             raise ValueError(f'Invalid columns found: {invalid_columns}')
 
     def _validate_null_data(self, train_data, discrete_columns):
-        """Check whether null values exist in continuous ``train_data``.
-
-        Args:
-            train_data (numpy.ndarray or pandas.DataFrame):
-                Training Data. It must be a 2-dimensional numpy array or a pandas.DataFrame.
-            discrete_columns (list-like):
-                List of discrete columns to be used to generate the Conditional
-                Vector. If ``train_data`` is a Numpy array, this list should
-                contain the integer indices of the columns. Otherwise, if it is
-                a ``pandas.DataFrame``, this list should contain the column names.
-        """
+        """Check whether null values exist in continuous train_data"""
+        
         if isinstance(train_data, pd.DataFrame):
             continuous_cols = list(set(train_data.columns) - set(discrete_columns))
             any_nulls = train_data[continuous_cols].isna().any().any()
@@ -331,37 +287,17 @@ class KAN_CTGAN(BaseSynthesizer):
             any_nulls = pd.DataFrame(train_data)[continuous_cols].isna().any().any()
 
         if any_nulls:
-            raise InvalidDataError(
-                'CTGAN does not support null values in the continuous training data. '
-                'Please remove all null values from your continuous training data.'
-            )
+            raise InvalidDataError('CTGAN does not support null values in the continuous training data.')
 
     @random_state
     def fit(self, train_data, discrete_columns=(), epochs=None):
-        """Fit the CTGAN Synthesizer models to the training data.
-
-        Args:
-            train_data (numpy.ndarray or pandas.DataFrame):
-                Training Data. It must be a 2-dimensional numpy array or a pandas.DataFrame.
-            discrete_columns (list-like):
-                List of discrete columns to be used to generate the Conditional
-                Vector. If ``train_data`` is a Numpy array, this list should
-                contain the integer indices of the columns. Otherwise, if it is
-                a ``pandas.DataFrame``, this list should contain the column names.
-        """
+        """Fit the CTGAN Synthesizer models to the training data"""
+        
         self._validate_discrete_columns(train_data, discrete_columns)
         self._validate_null_data(train_data, discrete_columns)
 
-        if epochs is None:
-            epochs = self._epochs
-        else:
-            warnings.warn(
-                (
-                    '`epochs` argument in `fit` method has been deprecated and will be removed '
-                    'in a future version. Please pass `epochs` to the constructor instead'
-                ),
-                DeprecationWarning,
-            )
+        epochs = self._epochs
+        
         self.target_delta = 1/len(train_data)
         self._transformer = DataTransformer()
         self._transformer.fit(train_data, discrete_columns)
@@ -372,7 +308,7 @@ class KAN_CTGAN(BaseSynthesizer):
         real_loader = DataLoader(
             real_dataset,
             batch_size=self._batch_size,
-            shuffle=True,  # важно для Opacus — батчи должны быть одного размера
+            shuffle=True,  # batches should be the same size
             pin_memory=True,
         )
 
@@ -382,7 +318,6 @@ class KAN_CTGAN(BaseSynthesizer):
 
         data_dim = self._transformer.output_dimensions
 
-        # (!) Обновил на KAN_Generator и Discriminator
         self._generator = KAN_Generator(
             self._embedding_dim + self._data_sampler.dim_cond_vec(), 
             self._generator_dim, 
@@ -395,14 +330,13 @@ class KAN_CTGAN(BaseSynthesizer):
             data_dim + self._data_sampler.dim_cond_vec(), self._discriminator_dim, pac=self.pac
         ).to(self._device)
 
-        # (!) Обновил оптимизаторы на AdamW
         optimizerG = optim.AdamW(
             self._generator.parameters(),
             lr=self._generator_lr,
             betas=(0.5, 0.9),
             weight_decay=self._generator_decay,
         )
-
+        # Adam optim is replaced with AdamW:
         optimizerD = optim.AdamW(
             discriminator.parameters(),
             lr=self._discriminator_lr,
@@ -410,7 +344,7 @@ class KAN_CTGAN(BaseSynthesizer):
             weight_decay=self._discriminator_decay,
         )
         
-        # (!) Приватность данных
+        # Data privacy
         self.privacy_engine = PrivacyEngine()
         
         discriminator, optimizerD, _ = self.privacy_engine.make_private_with_epsilon(
@@ -420,7 +354,7 @@ class KAN_CTGAN(BaseSynthesizer):
             target_epsilon=self.target_epsilon,
             target_delta=self.target_delta,
             epochs=epochs,
-            max_grad_norm=1.0,    # (!) Порог обрезки градиентов
+            max_grad_norm=1.0,
             poisson_sampling=False
         )
         
@@ -431,7 +365,7 @@ class KAN_CTGAN(BaseSynthesizer):
 
         epoch_iterator = tqdm(range(epochs), disable=(not self._verbose))
         if self._verbose:
-            description = 'Gen. ({gen}) | Discrim. ({dis})'
+            description = 'Generator ({gen}) | Discriminator ({dis})'
             epoch_iterator.set_description(
                 description.format(gen=_format_score(0), dis=_format_score(0))
             )
@@ -476,7 +410,6 @@ class KAN_CTGAN(BaseSynthesizer):
                     y_fake = discriminator(fake_cat)
                     y_real = discriminator(real_cat)
                     
-                    # (!) Заменил Loss func на бинарную кросс энтропию
                     loss_real = functional.binary_cross_entropy_with_logits(y_real, torch.ones_like(y_real))
                     loss_fake = functional.binary_cross_entropy_with_logits(y_fake, torch.zeros_like(y_fake))
                     loss_d = (loss_real + loss_fake) / 2
@@ -544,7 +477,7 @@ class KAN_CTGAN(BaseSynthesizer):
                 )
         self.actual_epsilon = self.privacy_engine.get_epsilon(self.target_delta)
         if self._verbose:
-            print(f"\nРеальный epsilon: {self.actual_epsilon:.4f} (target: {self.target_epsilon})")
+            print(f"\nactual epsilon: {self.actual_epsilon:.4f} (target epsilon: {self.target_epsilon})")
             print(f"Delta: {self.target_delta:.6f}")
 
     @random_state
@@ -566,6 +499,7 @@ class KAN_CTGAN(BaseSynthesizer):
         Returns:
             numpy.ndarray or pandas.DataFrame
         """
+        
         if condition_column is not None and condition_value is not None:
             condition_info = self._transformer.convert_column_name_value_to_id(
                 condition_column, condition_value
@@ -605,7 +539,6 @@ class KAN_CTGAN(BaseSynthesizer):
         return self._transformer.inverse_transform(data)
 
     def set_device(self, device):
-        """Set the `device` to be used ('GPU' or 'CPU)."""
         enable_gpu = getattr(self, '_enable_gpu', True)
         self._device = _set_device(enable_gpu, device)
         if self._generator is not None:
