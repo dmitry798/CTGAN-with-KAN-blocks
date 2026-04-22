@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from models.kan_ctgan_dp import KAN_CTGAN
+from ctgan import CTGAN
 import pickle
 import os
 
@@ -30,12 +30,7 @@ print(f"shape: {df.shape}")
 discrete_columns = []
 
 
-synthesizer = KAN_CTGAN(
-    # KAN params:
-    grid_size_gen=5,
-    spline_order_gen=3,
-    target_epsilon=5, # higher epsilon -> better quality, but less privacy
-    
+synthesizer = CTGAN(
     # Architecture params:
     embedding_dim=128,
     generator_dim=(512, 512),
@@ -46,38 +41,34 @@ synthesizer = KAN_CTGAN(
     generator_decay=1e-3,
     discriminator_lr=6e-4,
     discriminator_decay=1e-5,
-    batch_size=256,
+    batch_size=250, # batch_size % pac = 0
     discriminator_steps=2,
     
     # General params:
     log_frequency=True,
     verbose=True,
-    epochs=400,
-    pac=1, # Opacus requires pac=1
-    enable_gpu=True
+    pac=10,
+    cuda=True
 )
 
 # Training:
 print(f"\nTraining started:")
 synthesizer.fit(df, discrete_columns)
-
-# Results:
 print(f"\nTraining finished!")
-print(f"Actual epsilon: {synthesizer.actual_epsilon:.4f}")
 
 # Synthetic data generation:
-synthetic_data_kan_ctgan_dp = synthesizer.sample(len(df))
+synthetic_data_ctgan = synthesizer.sample(len(df))
 
 # Save:
 output_dir = os.path.join(os.path.dirname(__file__), '..', 'output')
 os.makedirs(output_dir, exist_ok=True)
-output_path = os.path.join(output_dir, 'synthetic_output_kan_ctgan_dp_credit_scoring.csv')
-synthetic_data_kan_ctgan_dp.to_csv(output_path, index=False)
+output_path = os.path.join(output_dir, 'synthetic_output_ctgan_credit_scoring.csv')
+synthetic_data_ctgan.to_csv(output_path, index=False)
 print(f"\nSynthetic data saved: {output_path}")
 
 weights_dir = os.path.join(os.path.dirname(__file__), '..', 'weights')
 os.makedirs(weights_dir, exist_ok=True)
-model_path = os.path.join(weights_dir, 'synthesizer_kan_ctgan_dp_credit_scoring.pkl')
+model_path = os.path.join(weights_dir, 'synthesizer_ctgan_credit_scoring_optimized.pkl')
 with open(model_path, 'wb') as f:
     pickle.dump(synthesizer, f)
 print(f"Model saved: {model_path}")

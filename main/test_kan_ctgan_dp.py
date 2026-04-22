@@ -5,15 +5,12 @@ import matplotlib.pyplot as plt
 url = "https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
 df = pd.read_csv(url, header=None, na_values='?')
 
-# Дадим колонкам имена
 df.columns = ['age','workclass','fnlwgt','education','education-num',
               'marital-status','occupation','relationship','race','sex',
               'capital-gain','capital-loss','hours-per-week','native-country','income']
 
-# Удалим строки с пропусками (CTGAN не любит NaN)
-df = df.dropna().reset_index(drop=True)
+df = df.dropna().reset_index(drop=True) # CTGAN doesn't work with NaN
 
-# Категориальные – по именам (соответствуют твоим индексам 0,3,4,5,6,8,9,11,12,15) [web:20]
 discrete_columns = ['workclass','education','marital-status','occupation',
                     'relationship','race','sex','native-country','income']
 
